@@ -1,0 +1,242 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Convert Text to Speech - VoxFlow.ai{% endblock %}
+
+{% block content %}
+<div class="convert-wrapper">
+    <div class="glass-card main-convert-card">
+        <div class="card-header">
+            <h1 class="card-title">Transform Text to Speech</h1>
+            <p class="card-subtitle">Synthesize premium, natural-sounding speech from documents or plain text.</p>
+        </div>
+
+        <form method="post" enctype="multipart/form-data" id="conversionForm" onsubmit="showProcessingSpinner(event)">
+            {% csrf_token %}
+            
+            {% if form.errors %}
+                <div class="error-summary glass-alert">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <div>
+                        <strong>Please correct the errors below:</strong>
+                        <ul class="error-list">
+                            {% for field in form %}
+                                {% for error in field.errors %}
+                                    <li>{{ field.label }}: {{ error }}</li>
+                                {% endfor %}
+                            {% endfor %}
+                            {% for error in form.non_field_errors %}
+                                <li>{{ error }}</li>
+                            {% endfor %}
+                        </ul>
+                    </div>
+                </div>
+            {% endif %}
+
+            <!-- Custom Project Title Field -->
+            <div class="form-group">
+                <label for="id_title" class="form-label">Audio Title <span class="label-optional">(Optional)</span></label>
+                {{ form.title }}
+                <span class="field-hint">If left blank, a title will be auto-generated from your text.</span>
+            </div>
+
+            <!-- Tabs/Toggles for Upload Mode -->
+            <div class="upload-mode-selector">
+                <button type="button" class="tab-btn active" id="tabDirectText" onclick="setUploadMode('text')">
+                    <i class="fa-solid fa-keyboard"></i> Direct Text
+                </button>
+                <button type="button" class="tab-btn" id="tabFileUpload" onclick="setUploadMode('file')">
+                    <i class="fa-solid fa-file-arrow-up"></i> Upload Document
+                </button>
+            </div>
+
+            <!-- Direct Text Area -->
+            <div class="form-group text-mode-container active-mode" id="textModeContainer">
+                <label for="id_text" class="form-label">Paste or Write Text</label>
+                <div class="textarea-wrapper">
+                    {{ form.text }}
+                    <div class="textarea-footer">
+                        <span id="charCount">0 characters</span>
+                        <span id="wordCountDisplay">0 words</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- File Upload Dropzone -->
+            <div class="form-group file-mode-container" id="fileModeContainer">
+                <label class="form-label">Upload a Document (.pdf, .txt)</label>
+                <div class="dropzone" id="dropzone" onclick="document.getElementById('id_file').click()">
+                    <i class="fa-solid fa-cloud-arrow-up dropzone-icon"></i>
+                    <p class="dropzone-text">Drag and drop your file here, or <span class="highlight">browse</span></p>
+                    <p class="dropzone-subtext">Supports PDF and TXT files. Max size 10MB.</p>
+                    <div class="selected-file-info" id="selectedFileInfo">
+                        <i class="fa-solid fa-file-lines file-icon"></i>
+                        <span class="file-name" id="fileName">No file chosen</span>
+                        <button type="button" class="clear-file-btn" onclick="clearSelectedFile(event)">&times;</button>
+                    </div>
+                    <!-- Hidden actual file input -->
+                    <div class="hidden-file-input">
+                        {{ form.file }}
+                    </div>
+                </div>
+            </div>
+
+            <!-- Synthesis Options (Grid) -->
+            <div class="options-grid">
+                <div class="form-group">
+                    <label for="id_language" class="form-label"><i class="fa-solid fa-language"></i> Language</label>
+                    {{ form.language }}
+                </div>
+                <div class="form-group">
+                    <label for="id_voice" class="form-label"><i class="fa-solid fa-user-astronaut"></i> Voice & Gender</label>
+                    {{ form.voice }}
+                </div>
+                <div class="form-group">
+                    <label for="id_speed" class="form-label"><i class="fa-solid fa-gauge-high"></i> Speed</label>
+                    {{ form.speed }}
+                </div>
+            </div>
+
+            <!-- Submit Button -->
+            <div class="submit-section">
+                <button type="submit" class="btn btn-primary btn-large btn-glow" id="btnSubmit">
+                    <span class="btn-text"><i class="fa-solid fa-circle-play"></i> Generate Speech</span>
+                </button>
+            </div>
+        </form>
+
+        <!-- Loader Section -->
+        <div class="processing-loader" id="processingLoader">
+            <div class="spinner-container">
+                <div class="waves-spinner">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+            </div>
+            <p class="loader-title">Synthesizing High-Fidelity Audio...</p>
+            <p class="loader-subtitle" id="loaderSubtitle">Parsing document text and converting to speech waves...</p>
+        </div>
+    </div>
+
+    <!-- Guest Playback Panel (If Guest converts text) -->
+    {% if guest_audio %}
+        <div class="glass-card guest-playback-card animate-fade-in">
+            <div class="guest-card-header">
+                <div class="pulse-indicator"></div>
+                <h2>Your Audio is Ready!</h2>
+            </div>
+            
+            <div class="guest-audio-player">
+                <div class="audio-info">
+                    <i class="fa-solid fa-circle-nodes info-icon"></i>
+                    <div>
+                        <h4 class="audio-title">{{ guest_title }}</h4>
+                        <p class="audio-meta">{{ word_count }} words synthesized successfully</p>
+                    </div>
+                </div>
+                
+                <!-- Modern Custom Styled Audio Player -->
+                <div class="custom-audio-player">
+                    <audio id="guestAudioSource" src="{{ guest_audio }}"></audio>
+                    <div class="player-controls">
+                        <button type="button" class="player-btn play-btn" onclick="togglePlayer('guestAudioSource', this)">
+                            <i class="fa-solid fa-play"></i>
+                        </button>
+                        <div class="progress-bar-container" onclick="seekAudio('guestAudioSource', event)">
+                            <div class="progress-bar-fill" id="guestPlayerProgress"></div>
+                        </div>
+                        <span class="player-time" id="guestPlayerTime">0:00</span>
+                    </div>
+                </div>
+
+                <div class="player-actions">
+                    <a href="{{ guest_audio }}" download="{{ guest_title }}.mp3" class="btn btn-primary download-btn">
+                        <i class="fa-solid fa-circle-down"></i> Download MP3
+                    </a>
+                </div>
+            </div>
+
+            <!-- Guest CTA Signup banner -->
+            <div class="guest-signup-cta">
+                <div class="cta-content">
+                    <h3>Unlock VoxFlow Pro Features</h3>
+                    <p>Create a free account to automatically save conversions, view a history dashboard, view usage statistics, and download files anytime.</p>
+                </div>
+                <div class="cta-action">
+                    <a href="{% url 'signup' %}" class="btn btn-secondary btn-glow-white">Sign Up Free</a>
+                </div>
+            </div>
+        </div>
+    {% endif %}
+</div>
+
+<script>
+    const voiceMap = {
+        'en': [
+            ['en-US-AriaNeural', 'US - Aria (Female)'],
+            ['en-US-GuyNeural', 'US - Guy (Male)'],
+            ['en-US-JennyNeural', 'US - Jenny (Female)'],
+            ['en-GB-SoniaNeural', 'UK - Sonia (Female)'],
+            ['en-GB-RyanNeural', 'UK - Ryan (Male)'],
+            ['en-IN-NeerjaNeural', 'India - Neerja (Female)'],
+            ['en-IN-PrabhatNeural', 'India - Prabhat (Male)'],
+            ['en-AU-NatashaNeural', 'Australia - Natasha (Female)'],
+            ['en-AU-WilliamNeural', 'Australia - William (Male)']
+        ],
+        'es': [
+            ['es-ES-ElviraNeural', 'Spain - Elvira (Female)'],
+            ['es-ES-AlvaroNeural', 'Spain - Alvaro (Male)'],
+            ['es-US-PalomaNeural', 'US - Paloma (Female)'],
+            ['es-US-AlonsoNeural', 'US - Alonso (Male)']
+        ],
+        'fr': [
+            ['fr-FR-DeniseNeural', 'France - Denise (Female)'],
+            ['fr-FR-HenriNeural', 'France - Henri (Male)']
+        ],
+        'de': [
+            ['de-DE-KatjaNeural', 'Germany - Katja (Female)'],
+            ['de-DE-KillianNeural', 'Germany - Killian (Male)']
+        ],
+        'hi': [
+            ['hi-IN-SwaraNeural', 'India - Swara (Female)'],
+            ['hi-IN-MadhurNeural', 'India - Madhur (Male)']
+        ]
+    };
+
+    function updateVoiceDropdown() {
+        const langSelect = document.getElementById('id_language');
+        const voiceSelect = document.getElementById('id_voice');
+        if (!langSelect || !voiceSelect) return;
+
+        const selectedLang = langSelect.value;
+        const voices = voiceMap[selectedLang] || [];
+
+        // Store selected value to restore if still exists
+        const prevValue = voiceSelect.value;
+
+        // Clear choices
+        voiceSelect.innerHTML = '';
+
+        // Populate
+        voices.forEach(voice => {
+            const option = document.createElement('option');
+            option.value = voice[0];
+            option.textContent = voice[1];
+            voiceSelect.appendChild(option);
+        });
+
+        // Try to restore previous value
+        if (Array.from(voiceSelect.options).some(opt => opt.value === prevValue)) {
+            voiceSelect.value = prevValue;
+        }
+    }
+
+    // Call initially to set up correct voices on load
+    document.addEventListener('DOMContentLoaded', () => {
+        updateVoiceDropdown();
+    });
+</script>
+{% endblock %}

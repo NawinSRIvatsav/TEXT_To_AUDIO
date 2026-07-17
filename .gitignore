@@ -1,0 +1,14 @@
+# Django ignore rules
+*.log
+db.sqlite3
+media/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Python environment
+.venv/
+env/
+venv/
+ENV/
+python/

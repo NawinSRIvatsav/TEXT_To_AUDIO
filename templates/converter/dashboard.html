@@ -1,0 +1,135 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}User Dashboard - VoxFlow.ai{% endblock %}
+
+{% block content %}
+<div class="dashboard-wrapper">
+    <!-- Header -->
+    <div class="dashboard-header-section">
+        <div>
+            <h1 class="dashboard-title">Your Audio Dashboard</h1>
+            <p class="dashboard-subtitle">Manage, listen to, and download your synthesized speech assets.</p>
+        </div>
+        <a href="{% url 'convert' %}" class="btn btn-primary btn-glow">
+            <i class="fa-solid fa-circle-plus"></i> New Conversion
+        </a>
+    </div>
+
+    <!-- Statistics Grid -->
+    <div class="stats-grid">
+        <div class="glass-card stat-card">
+            <div class="stat-icon-wrapper purple-glow">
+                <i class="fa-solid fa-microphone-lines"></i>
+            </div>
+            <div class="stat-info">
+                <h3 class="stat-value">{{ total_conversions }}</h3>
+                <p class="stat-label">Total Audios</p>
+            </div>
+        </div>
+        <div class="glass-card stat-card">
+            <div class="stat-icon-wrapper blue-glow">
+                <i class="fa-solid fa-file-word"></i>
+            </div>
+            <div class="stat-info">
+                <h3 class="stat-value">{{ total_words }}</h3>
+                <p class="stat-label">Words Converted</p>
+            </div>
+        </div>
+        <div class="glass-card stat-card">
+            <div class="stat-icon-wrapper green-glow">
+                <i class="fa-solid fa-earth-asia"></i>
+            </div>
+            <div class="stat-info">
+                <h3 class="stat-value">{{ most_used_lang }}</h3>
+                <p class="stat-label">Primary Language</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Search & List Section -->
+    <div class="glass-card list-card">
+        <div class="list-controls">
+            <h2>Recent Conversions</h2>
+            <form method="get" class="search-form">
+                <div class="search-input-wrapper">
+                    <i class="fa-solid fa-magnifying-glass search-icon"></i>
+                    <input type="text" name="q" value="{{ query }}" placeholder="Search by title or text..." class="glass-input search-input">
+                    {% if query %}
+                        <a href="{% url 'dashboard' %}" class="clear-search-btn"><i class="fa-solid fa-xmark"></i></a>
+                    {% endif %}
+                </div>
+            </form>
+        </div>
+
+        {% if conversions %}
+            <div class="conversions-list" id="conversionsList">
+                {% for c in conversions %}
+                    <div class="conversion-item" id="conversion_row_{{ c.id }}">
+                        <div class="item-info">
+                            <div class="item-header">
+                                <h3 class="item-title">{{ c.title }}</h3>
+                                <div class="badge-row">
+                                    <span class="badge badge-lang"><i class="fa-solid fa-language"></i> {{ c.language|upper }}</span>
+                                    <span class="badge badge-accent"><i class="fa-solid fa-user-astronaut"></i> {{ c.voice }}</span>
+                                    <span class="badge badge-speed"><i class="fa-solid fa-gauge-high"></i> {{ c.speed }}</span>
+                                </div>
+                            </div>
+                            <p class="item-text-preview" title="{{ c.original_text }}">
+                                {{ c.original_text|slice:":120" }}{% if c.original_text|length > 120 %}...{% endif %}
+                            </p>
+                            <div class="item-meta">
+                                <span><i class="fa-regular fa-clock"></i> {{ c.created_at|date:"M d, Y H:i" }}</span>
+                                <span>&bull;</span>
+                                <span><i class="fa-solid fa-calculator"></i> {{ c.word_count }} words</span>
+                            </div>
+                        </div>
+
+                        <!-- Custom Built Inline Audio Player -->
+                        <div class="item-player">
+                            <audio id="audio_player_{{ c.id }}" src="{{ c.audio_file.url }}"></audio>
+                            <div class="inline-player-controls">
+                                <button type="button" class="player-btn-inline play-btn" onclick="togglePlayer('audio_player_{{ c.id }}', this)">
+                                    <i class="fa-solid fa-play"></i>
+                                </button>
+                                <div class="progress-bar-container-inline" onclick="seekAudio('audio_player_{{ c.id }}', event)">
+                                    <div class="progress-bar-fill" id="audio_player_{{ c.id }}_progress"></div>
+                                </div>
+                                <span class="player-time-inline" id="audio_player_{{ c.id }}_time">0:00</span>
+                            </div>
+                        </div>
+
+                        <!-- Actions (Download & Delete) -->
+                        <div class="item-actions">
+                            <a href="{{ c.audio_file.url }}" download="{{ c.title }}.mp3" class="action-btn btn-download" title="Download Audio">
+                                <i class="fa-solid fa-circle-down"></i>
+                            </a>
+                            <form action="{% url 'delete_conversion' c.id %}" method="post" class="delete-form" onsubmit="ajaxDelete(event, '{{ c.id }}')">
+                                {% csrf_token %}
+                                <button type="submit" class="action-btn btn-delete" title="Delete record">
+                                    <i class="fa-solid fa-trash-can"></i>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <div class="empty-state">
+                <div class="empty-icon-wrapper">
+                    <i class="fa-solid fa-music-slash"></i>
+                </div>
+                <h3>No Audio Assets Found</h3>
+                {% if query %}
+                    <p>We couldn't find any matches for "{{ query }}". Try searching for something else.</p>
+                {% else %}
+                    <p>Start converting your text and files to speech. All your audio assets will appear here!</p>
+                    <a href="{% url 'convert' %}" class="btn btn-primary btn-glow btn-margin-top">
+                        <i class="fa-solid fa-circle-play"></i> Start Synthesizing
+                    </a>
+                {% endif %}
+            </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

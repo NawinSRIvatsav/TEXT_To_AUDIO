@@ -1,0 +1,68 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Sign In - VoxFlow.ai{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper">
+    <div class="glass-card auth-card animate-fade-in">
+        <div class="auth-header">
+            <h2>Welcome Back</h2>
+            <p>Access your saved audio assets and dashboard</p>
+        </div>
+
+        <form method="post" action="{% url 'login' %}">
+            {% csrf_token %}
+
+            {% if form.non_field_errors %}
+                <div class="error-summary glass-alert">
+                    <i class="fa-solid fa-triangle-exclamation"></i>
+                    <div>
+                        {% for error in form.non_field_errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+
+            <!-- Username Field -->
+            <div class="form-group">
+                <label for="id_username" class="form-label">Username</label>
+                <div class="input-icon-wrapper">
+                    <i class="fa-solid fa-user input-icon"></i>
+                    <input type="text" name="username" autofocus maxlength="150" required id="id_username" class="form-control glass-input icon-input" placeholder="Your username...">
+                </div>
+                {% if form.username.errors %}
+                    <span class="field-error">{{ form.username.errors.0 }}</span>
+                {% endif %}
+            </div>
+
+            <!-- Password Field -->
+            <div class="form-group">
+                <label for="id_password" class="form-label">Password</label>
+                <div class="input-icon-wrapper">
+                    <i class="fa-solid fa-lock input-icon"></i>
+                    <input type="password" name="password" required id="id_password" class="form-control glass-input icon-input" placeholder="••••••••">
+                </div>
+                {% if form.password.errors %}
+                    <span class="field-error">{{ form.password.errors.0 }}</span>
+                {% endif %}
+            </div>
+
+            <!-- Redirect Next URL -->
+            <input type="hidden" name="next" value="{{ next }}">
+
+            <!-- Submit -->
+            <div class="auth-action">
+                <button type="submit" class="btn btn-primary btn-full btn-glow">
+                    Sign In
+                </button>
+            </div>
+        </form>
+
+        <div class="auth-footer">
+            <p>Don't have an account? <a href="{% url 'signup' %}" class="auth-link">Sign up here</a></p>
+        </div>
+    </div>
+</div>
+{% endblock %}
