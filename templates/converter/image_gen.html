@@ -1,0 +1,370 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}AI Image Studio - VoxFlow.ai{% endblock %}
+
+{% block content %}
+<div class="convert-wrapper" style="max-width: 1000px; margin: 0 auto;">
+    <div class="glass-card">
+        <!-- Header -->
+        <div class="card-header" style="text-align: center; margin-bottom: 30px;">
+            <h1 class="card-title"><i class="fa-solid fa-wand-magic-sparkles" style="color: var(--color-secondary);"></i> AI Image Studio</h1>
+            <p class="card-subtitle">Generate images from description prompts or edit and stylize your photos using local Stable Diffusion.</p>
+        </div>
+
+        <!-- Mode Tabs -->
+        <div class="mode-tabs" style="display: flex; gap: 15px; margin-bottom: 25px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding-bottom: 12px;">
+            <button class="tab-btn active" id="tabTxt2Img" onclick="switchMode('txt2img')" style="background: none; border: none; color: var(--text-primary); font-size: 1rem; font-weight: 600; cursor: pointer; padding: 6px 12px; border-radius: 8px; transition: all 0.3s;">
+                <i class="fa-solid fa-keyboard"></i> Text to Image
+            </button>
+            <button class="tab-btn" id="tabImg2Img" onclick="switchMode('img2img')" style="background: none; border: none; color: var(--text-secondary); font-size: 1rem; font-weight: 600; cursor: pointer; padding: 6px 12px; border-radius: 8px; transition: all 0.3s;">
+                <i class="fa-solid fa-image"></i> Image Stylize & Edit
+            </button>
+        </div>
+
+        <!-- Forms Container -->
+        <form id="imageGenForm" method="post" action="{% url 'image_generator' %}" enctype="multipart/form-data">
+            {% csrf_token %}
+            <input type="hidden" name="mode" id="generatorMode" value="txt2img">
+
+            <div style="display: grid; grid-template-columns: 1fr; gap: 20px;">
+                <!-- Text Prompt (All Modes) -->
+                <div class="form-group">
+                    <label for="promptInput" class="form-label"><i class="fa-solid fa-sparkles"></i> Prompt Description</label>
+                    <textarea name="prompt" id="promptInput" class="form-control glass-input" rows="3" placeholder="Describe the image you want to generate in detail (e.g. 'A futuristic city at sunset with flying cars')..." required></textarea>
+                </div>
+
+                <!-- Shared Settings: Style presets -->
+                <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                    <div class="form-group">
+                        <label for="stylePreset" class="form-label"><i class="fa-solid fa-palette"></i> Style Preset</label>
+                        <select name="style" id="stylePreset" class="form-control glass-select">
+                            <option value="realistic">Realistic Photography</option>
+                            <option value="anime">Anime / Digital Art</option>
+                            <option value="watercolor">Watercolor Painting</option>
+                            <option value="pixel">Retro Pixel Art</option>
+                        </select>
+                    </div>
+
+                    <!-- Strength slider (Img2Img only) -->
+                    <div class="form-group" id="strengthSliderGroup" style="display: none;">
+                        <label for="strengthSlider" class="form-label" style="display: flex; justify-content: space-between;">
+                            <span>Styling Strength</span>
+                            <span id="strengthValue">0.70</span>
+                        </label>
+                        <input type="range" name="strength" id="strengthSlider" min="0.1" max="0.9" step="0.05" value="0.70" class="glass-slider" oninput="document.getElementById('strengthValue').innerText = parseFloat(this.value).toFixed(2)" style="width: 100%; margin-top: 8px;">
+                    </div>
+                </div>
+
+                <!-- Image Upload & Mask canvas (Img2Img & Inpainting) -->
+                <div class="form-group" id="imageUploadGroup" style="display: none;">
+                    <label class="form-label"><i class="fa-solid fa-upload"></i> Upload Source Image</label>
+                    <div class="dropzone" id="imgDropzone" onclick="document.getElementById('sourceImageFile').click()" style="padding: 20px; border-radius: 12px; border: 2px dashed rgba(255,255,255,0.1); cursor: pointer; text-align: center;">
+                        <i class="fa-solid fa-cloud-arrow-up" style="font-size: 2rem; color: var(--color-primary); margin-bottom: 8px;"></i>
+                        <p style="font-size: 0.9rem; font-weight: 500;">Select or drop an image</p>
+                        <input type="file" id="sourceImageFile" name="image" accept="image/png, image/jpeg" style="display: none;" onchange="loadSourceImage(event)">
+                    </div>
+
+                    <!-- Editor Canvas Container -->
+                    <div id="canvasContainer" style="display: none; flex-direction: column; align-items: center; margin-top: 20px;">
+                        <div style="display: flex; gap: 15px; margin-bottom: 10px;">
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer;">
+                                <input type="radio" name="edit_type" value="stylize" checked onchange="toggleEditingMode('stylize')"> Stylize Whole Image
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 8px; font-size: 0.9rem; cursor: pointer;">
+                                <input type="radio" name="edit_type" value="inpaint" onchange="toggleEditingMode('inpaint')"> Inpaint (Edit Background/Region)
+                            </label>
+                        </div>
+
+                        <div id="brushControls" style="display: none; align-items: center; gap: 15px; margin-bottom: 10px;">
+                            <span style="font-size: 0.85rem; color: var(--text-secondary);">Draw black over regions you want to replace:</span>
+                            <button type="button" class="btn btn-secondary" style="padding: 4px 8px; font-size: 0.8rem;" onclick="clearCanvasMask()"><i class="fa-solid fa-eraser"></i> Clear Mask</button>
+                        </div>
+
+                        <div style="position: relative; background: #000; border-radius: 8px; overflow: hidden; max-width: 512px; aspect-ratio: 1;">
+                            <canvas id="editorCanvas" style="width: 100%; max-width: 512px; display: block; cursor: crosshair;"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Hidden file inputs to submit mask blob -->
+                <input type="file" id="maskBlobInput" name="mask_image" style="display: none;">
+
+                <!-- Submit Button -->
+                <div style="text-align: center; margin-top: 15px;">
+                    <button type="submit" class="btn btn-primary btn-large btn-glow" id="btnSubmitImage">
+                        <i class="fa-solid fa-wand-magic-sparkles"></i> Queue Generation
+                    </button>
+                </div>
+            </div>
+        </form>
+
+        <!-- Gallery Section -->
+        <div style="margin-top: 50px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 30px;">
+            <h3 style="font-size: 1.2rem; font-weight: 700; margin-bottom: 20px;"><i class="fa-solid fa-images" style="color: var(--color-primary);"></i> Creative Gallery</h3>
+            
+            {% if images %}
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px;">
+                    {% for img in images %}
+                        <div class="glass-card-nested" id="img-card-{{ img.id }}" style="padding: 0; overflow: hidden; border-radius: 12px; transition: all 0.3s; border: 1px solid var(--glass-border); position: relative;" onmouseover="this.style.transform='translateY(-5px)'" onmouseout="this.style.transform='none'">
+                            <img src="{{ img.image_file.url }}" alt="{{ img.prompt }}" style="width: 100%; aspect-ratio: 1; object-fit: cover; display: block;">
+                            <div style="padding: 12px;">
+                                <p style="font-size: 0.8rem; font-weight: 500; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; height: 2.4em; margin-bottom: 8px;">{{ img.prompt }}</p>
+                                <div style="display: flex; justify-content: space-between; align-items: center;">
+                                    <span style="font-size: 0.75rem; text-transform: uppercase; color: var(--text-muted); font-weight: 700;">{{ img.style }}</span>
+                                    <div style="display: flex; gap: 8px;">
+                                        <a href="{{ img.image_file.url }}" download class="btn btn-secondary" style="padding: 5px 8px; font-size: 0.75rem;" title="Download PNG"><i class="fa-solid fa-download"></i></a>
+                                        <form method="post" action="{% url 'delete_image' img.id %}" style="display: inline;" onsubmit="deleteImageAjax(event, '{{ img.id }}')">
+                                            {% csrf_token %}
+                                            <button type="submit" class="btn btn-danger" style="padding: 5px 8px; font-size: 0.75rem;" title="Delete Image"><i class="fa-solid fa-trash"></i></button>
+                                        </form>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <div class="empty-state" style="text-align: center; padding: 40px 20px; background: rgba(255,255,255,0.01); border-radius: 12px; border: 1px dashed rgba(255,255,255,0.05);">
+                    <i class="fa-solid fa-image" style="font-size: 2.5rem; color: var(--text-muted); margin-bottom: 12px; display: block;"></i>
+                    <p style="color: var(--text-secondary); font-size: 0.95rem;">No generated images in your gallery yet. Start typing a prompt above!</p>
+                </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    const canvas = document.getElementById('editorCanvas');
+    const ctx = canvas.getContext('2d');
+    let sourceImage = null;
+    let isDrawing = false;
+    let maskCanvas = null;
+    let maskCtx = null;
+
+    function switchMode(mode) {
+        document.getElementById('generatorMode').value = mode;
+        const tabTxt = document.getElementById('tabTxt2Img');
+        const tabImg = document.getElementById('tabImg2Img');
+        
+        const strengthGroup = document.getElementById('strengthSliderGroup');
+        const uploadGroup = document.getElementById('imageUploadGroup');
+
+        if (mode === 'txt2img') {
+            tabTxt.classList.add('active');
+            tabTxt.style.color = 'var(--text-primary)';
+            tabImg.classList.remove('active');
+            tabImg.style.color = 'var(--text-secondary)';
+            
+            strengthGroup.style.display = 'none';
+            uploadGroup.style.display = 'none';
+        } else {
+            tabImg.classList.add('active');
+            tabImg.style.color = 'var(--text-primary)';
+            tabTxt.classList.remove('active');
+            tabTxt.style.color = 'var(--text-secondary)';
+            
+            strengthGroup.style.display = 'block';
+            uploadGroup.style.display = 'block';
+        }
+    }
+
+    function loadSourceImage(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            sourceImage = new Image();
+            sourceImage.onload = function() {
+                // Initialize canvas dimensions
+                canvas.width = 512;
+                canvas.height = 512;
+                ctx.drawImage(sourceImage, 0, 0, 512, 512);
+
+                // Initialize secondary off-screen canvas to hold the drawn mask
+                maskCanvas = document.createElement('canvas');
+                maskCanvas.width = 512;
+                maskCanvas.height = 512;
+                maskCtx = maskCanvas.getContext('2d');
+                // Fill mask initially with solid white (unmasked regions)
+                maskCtx.fillStyle = '#ffffff';
+                maskCtx.fillRect(0, 0, 512, 512);
+
+                document.getElementById('canvasContainer').style.display = 'flex';
+                // Trigger initial setup based on active radios
+                const modeVal = document.querySelector('input[name="edit_type"]:checked').value;
+                toggleEditingMode(modeVal);
+            };
+            sourceImage.src = e.target.result;
+        };
+        reader.readAsDataURL(file);
+    }
+
+    function toggleEditingMode(mode) {
+        const brushControls = document.getElementById('brushControls');
+        const generatorMode = document.getElementById('generatorMode');
+        const strengthSlider = document.getElementById('strengthSliderGroup');
+
+        if (mode === 'stylize') {
+            generatorMode.value = 'img2img';
+            brushControls.style.display = 'none';
+            strengthSlider.style.display = 'block';
+            redrawCanvas(false);
+        } else {
+            generatorMode.value = 'inpaint';
+            brushControls.style.display = 'flex';
+            strengthSlider.style.display = 'none';
+            setupDrawingHandlers();
+            redrawCanvas(true);
+        }
+    }
+
+    function redrawCanvas(drawMask) {
+        if (!sourceImage) return;
+        ctx.clearRect(0, 0, 512, 512);
+        ctx.drawImage(sourceImage, 0, 0, 512, 512);
+
+        if (drawMask && maskCanvas) {
+            // Overlay drawn mask coordinates transparently in red for user visualization
+            ctx.globalAlpha = 0.5;
+            // Draw any region that is colored black on the mask as red on the visualization screen
+            const maskData = maskCtx.getImageData(0, 0, 512, 512);
+            const viewData = ctx.getImageData(0, 0, 512, 512);
+            for (let i = 0; i < maskData.data.length; i += 4) {
+                if (maskData.data[i] === 0) { // Black pixel
+                    viewData.data[i] = 239;     // Red
+                    viewData.data[i+1] = 68;   // Green
+                    viewData.data[i+2] = 68;   // Blue
+                    viewData.data[i+3] = 200;  // Alpha
+                }
+            }
+            ctx.putImageData(viewData, 0, 0);
+            ctx.globalAlpha = 1.0;
+        }
+    }
+
+    function clearCanvasMask() {
+        if (!maskCtx) return;
+        maskCtx.fillStyle = '#ffffff';
+        maskCtx.fillRect(0, 0, 512, 512);
+        redrawCanvas(true);
+    }
+
+    function setupDrawingHandlers() {
+        // Remove prior event listeners if any
+        canvas.onmousedown = startDrawing;
+        canvas.onmousemove = drawStroke;
+        canvas.onmouseup = stopDrawing;
+        canvas.onmouseleave = stopDrawing;
+
+        // Touch support
+        canvas.ontouchstart = (e) => {
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent("mousedown", {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            });
+            canvas.dispatchEvent(mouseEvent);
+        };
+        canvas.ontouchmove = (e) => {
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent("mousemove", {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            });
+            canvas.dispatchEvent(mouseEvent);
+        };
+        canvas.ontouchend = () => {
+            const mouseEvent = new MouseEvent("mouseup", {});
+            canvas.dispatchEvent(mouseEvent);
+        };
+    }
+
+    function startDrawing(e) {
+        const mode = document.querySelector('input[name="edit_type"]:checked').value;
+        if (mode !== 'inpaint') return;
+        isDrawing = true;
+        drawStroke(e);
+    }
+
+    function drawStroke(e) {
+        if (!isDrawing) return;
+        
+        const rect = canvas.getBoundingClientRect();
+        const scaleX = canvas.width / rect.width;
+        const scaleY = canvas.height / rect.height;
+        const x = (e.clientX - rect.left) * scaleX;
+        const y = (e.clientY - rect.top) * scaleY;
+
+        // Draw black stroke onto off-screen mask canvas
+        maskCtx.lineWidth = 32;
+        maskCtx.lineCap = 'round';
+        maskCtx.strokeStyle = '#000000'; // Black represents regions to be filled/inpainted
+        
+        if (e.type === 'mousedown') {
+            maskCtx.beginPath();
+            maskCtx.moveTo(x, y);
+        } else {
+            maskCtx.lineTo(x, y);
+            maskCtx.stroke();
+        }
+        
+        redrawCanvas(true);
+    }
+
+    function stopDrawing() {
+        isDrawing = false;
+    }
+
+    // Intercept form submit to pack mask canvas into File field
+    document.getElementById('imageGenForm').addEventListener('submit', function(e) {
+        const mode = document.getElementById('generatorMode').value;
+        if (mode === 'inpaint' && maskCanvas) {
+            e.preventDefault(); // Stop normal form submit temporarily
+            
+            maskCanvas.toBlob(blob => {
+                const file = new File([blob], "mask.png", { type: "image/png" });
+                
+                // Set into hidden file input
+                const dataTransfer = new DataTransfer();
+                dataTransfer.items.add(file);
+                document.getElementById('maskBlobInput').files = dataTransfer.files;
+
+                // Continue form submit
+                this.submit();
+            }, 'image/png');
+        }
+    });
+
+    function deleteImageAjax(event, id) {
+        event.preventDefault();
+        if (!confirm("Are you sure you want to delete this generated image?")) return;
+
+        const form = event.target;
+        const url = form.action;
+        const csrfToken = form.querySelector('[name=csrfmiddlewaretoken]').value;
+
+        fetch(url, {
+            method: 'POST',
+            headers: {
+                'X-CSRFToken': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(res => res.json())
+        .then(data => {
+            if (data.status === 'success') {
+                const card = document.getElementById('img-card-' + id);
+                if (card) card.remove();
+            } else {
+                alert("Error deleting image: " + data.message);
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            alert("Network error occurred while trying to delete image.");
+        });
+    }
+</script>
+{% endblock %}

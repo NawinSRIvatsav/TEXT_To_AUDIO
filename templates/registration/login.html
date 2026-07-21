@@ -1,5 +1,6 @@
 {% extends 'base.html' %}
 {% load static %}
+{% load socialaccount %}
 
 {% block title %}Sign In - VoxFlow.ai{% endblock %}
 
@@ -53,10 +54,20 @@
             <input type="hidden" name="next" value="{{ next }}">
 
             <!-- Submit -->
-            <div class="auth-action">
+            <div class="auth-action" style="display: flex; flex-direction: column; gap: 15px;">
                 <button type="submit" class="btn btn-primary btn-full btn-glow">
                     Sign In
                 </button>
+                
+                <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin: 5px 0;">
+                    <div style="flex: 1; height: 1px; background: rgba(255,255,255,0.08);"></div>
+                    <span style="font-size: 0.75rem; color: var(--text-muted); text-transform: uppercase;">or</span>
+                    <div style="flex: 1; height: 1px; background: rgba(255,255,255,0.08);"></div>
+                </div>
+
+                <a href="{% provider_login_url 'google' %}" class="btn btn-secondary btn-full" style="display: flex; align-items: center; justify-content: center; gap: 10px; border-radius: 12px; padding: 12px;">
+                    <i class="fa-brands fa-google" style="color: #ea4335;"></i> Continue with Google
+                </a>
             </div>
         </form>
 

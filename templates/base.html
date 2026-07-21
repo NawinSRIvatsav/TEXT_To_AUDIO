@@ -37,6 +37,9 @@
                         <a href="{% url 'dashboard' %}" class="nav-link {% if request.resolver_match.url_name == 'dashboard' %}active{% endif %}">
                             <i class="fa-solid fa-chart-simple"></i> Dashboard
                         </a>
+                        <a href="{% url 'image_generator' %}" class="nav-link {% if request.resolver_match.url_name == 'image_generator' %}active{% endif %}">
+                            <i class="fa-solid fa-image"></i> AI Image Studio
+                        </a>
                         <div class="user-menu">
                             <span class="user-greeting"><i class="fa-solid fa-user-astronaut"></i> {{ user.username }}</span>
                             <form action="{% url 'logout' %}" method="post" class="inline-form">

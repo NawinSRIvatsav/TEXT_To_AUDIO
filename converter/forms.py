@@ -67,6 +67,28 @@ class AudioConversionForm(forms.ModelForm):
         }),
         required=False
     )
+    translate_before_converting = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'glass-checkbox', 'id': 'id_translate_before_converting', 'onchange': 'toggleTranslationOptions()'})
+    )
+    target_language = forms.ChoiceField(
+        choices=LANGUAGE_CHOICES,
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-control glass-select', 'id': 'id_target_language'})
+    )
+    generate_video = forms.BooleanField(
+        required=False,
+        widget=forms.CheckboxInput(attrs={'class': 'glass-checkbox', 'id': 'id_generate_video', 'onchange': 'toggleVideoOptions()'})
+    )
+    video_style = forms.ChoiceField(
+        choices=[
+            ('waveform', 'Waveform Only'),
+            ('captioned', 'Captioned Only'),
+            ('both', 'Both Waveform & Captions')
+        ],
+        required=False,
+        widget=forms.Select(attrs={'class': 'form-control glass-select', 'id': 'id_video_style'})
+    )
 
     class Meta:
         model = AudioConversion

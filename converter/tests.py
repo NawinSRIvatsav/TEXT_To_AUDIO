@@ -70,3 +70,20 @@ class ViewTests(TestCase):
         response = self.client.get(reverse('dashboard'))
         self.assertEqual(response.status_code, 302) # Redirects to login
 
+    def test_translate_preview_endpoint(self):
+        response = self.client.post(reverse('translate_preview'), {
+            'text': 'Hello world',
+            'target_lang': 'es',
+            'source_lang': 'en'
+        })
+        self.assertEqual(response.status_code, 200)
+        self.assertIn('translated_text', response.json())
+
+    def test_ocr_upload_endpoint_requires_file(self):
+        response = self.client.post(reverse('ocr_upload'))
+        self.assertEqual(response.status_code, 400) # Bad request since no image supplied
+
+    def test_image_generator_requires_login(self):
+        response = self.client.get(reverse('image_generator'))
+        self.assertEqual(response.status_code, 302) # Redirect to login
+

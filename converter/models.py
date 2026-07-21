@@ -13,15 +13,35 @@ class AudioConversion(models.Model):
     word_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
-    def delete(self, *args, **kwargs):
-        if self.audio_file:
-            if os.path.isfile(self.audio_file.path):
-                try:
-                    os.remove(self.audio_file.path)
-                except OSError:
-                    pass
-        super().delete(*args, **kwargs)
+    # Feature 1: Translation fields
+    source_language = models.CharField(max_length=50, default='auto')
+    translated_text = models.TextField(blank=True, null=True)
+    was_translated = models.BooleanField(default=False)
+
+    # Feature 4: Audio-to-Video fields
+    video_file = models.FileField(upload_to='videos/', blank=True, null=True)
+    video_style = models.CharField(
+        max_length=50, 
+        blank=True, 
+        null=True, 
+        choices=[
+            ("waveform", "Waveform Only"),
+            ("captioned", "Captioned Only"),
+            ("both", "Both Waveform & Captions")
+        ]
+    )
 
     def __str__(self):
         return f"{self.title} ({self.voice})"
+
+
+class GeneratedImage(models.Model):
+    user = models.ForeignKey(User, on_delete=models.CASCADE, null=True, blank=True, related_name='generated_images')
+    prompt = models.TextField()
+    style = models.CharField(max_length=50, default='realistic')
+    image_file = models.ImageField(upload_to='generated_images/')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Image: {self.prompt[:30]} ({self.style})"
 

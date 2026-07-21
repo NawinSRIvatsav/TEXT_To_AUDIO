@@ -32,6 +32,8 @@ def convert_view(request):
             voice = form.cleaned_data.get('voice', 'en-US-AriaNeural')
             speed = form.cleaned_data.get('speed', 'normal')
             title = form.cleaned_data.get('title')
+            generate_video = form.cleaned_data.get('generate_video', False)
+            video_style = form.cleaned_data.get('video_style', 'waveform')
 
             # Extract text from file if provided
             if uploaded_file:
@@ -54,6 +56,31 @@ def convert_view(request):
             if not text:
                 messages.error(request, "Please enter some text or upload a valid file.")
                 return render(request, 'converter/convert.html', {'form': form})
+
+            # Feature 1: Translation processing
+            translate_before_converting = form.cleaned_data.get('translate_before_converting', False)
+            target_language = form.cleaned_data.get('target_language', 'en')
+            was_translated = False
+            original_text_backup = text
+            source_language = 'auto'
+
+            if translate_before_converting and target_language:
+                try:
+                    translated, detected_lang = translate_text(text, 'auto', target_language)
+                    source_language = detected_lang
+                    text = translated
+                    was_translated = True
+                    language = target_language
+                    
+                    # Fallback voice selection if currently selected voice doesn't match target language
+                    if not voice.startswith(target_language):
+                        from .forms import VOICE_MAP
+                        voices_list = VOICE_MAP.get(target_language, [])
+                        if voices_list:
+                            voice = voices_list[0][0]
+                except TranslationError as e:
+                    messages.error(request, f"Translation failed: {str(e)}")
+                    return render(request, 'converter/convert.html', {'form': form})
 
             # Word count calculation
             word_count = len(text.split())
@@ -80,8 +107,15 @@ def convert_view(request):
                 # Create Model instance
                 conversion = form.save(commit=False)
                 conversion.user = request.user if request.user.is_authenticated else None
-                conversion.original_text = text
+                conversion.original_text = original_text_backup
                 conversion.word_count = word_count
+                
+                # Assign translation fields
+                conversion.source_language = source_language
+                conversion.translated_text = text if was_translated else None
+                conversion.was_translated = was_translated
+                conversion.language = language
+                conversion.voice = voice
                 
                 if not title:
                     # Generate title from first few words
@@ -95,6 +129,13 @@ def convert_view(request):
                 # Save audio file to model field
                 conversion.audio_file.save(filename, ContentFile(audio_io.read()), save=False)
                 conversion.save()
+
+                if generate_video:
+                    conversion.video_style = video_style
+                    conversion.save()
+                    if request.user.is_authenticated:
+                        from django_q.tasks import async_task
+                        async_task('converter.tasks.generate_video_task', conversion.id)
 
                 if request.user.is_authenticated:
                     messages.success(request, f"Successfully converted! Saved as '{conversion.title}'.")
@@ -185,3 +226,139 @@ def signup_view(request):
         form = UserCreationForm()
         
     return render(request, 'registration/signup.html', {'form': form})
+
+from django.views.decorators.csrf import csrf_exempt
+from .services.translation import translate_text, TranslationError
+
+@csrf_exempt
+def translate_preview(request):
+    """AJAX preview endpoint that returns translated text and detected source language."""
+    if request.method == 'POST':
+        text = request.POST.get('text', '')
+        target_lang = request.POST.get('target_lang', 'en')
+        source_lang = request.POST.get('source_lang', 'auto')
+
+        if not text:
+            return JsonResponse({'status': 'error', 'message': 'No text provided'}, status=400)
+
+        try:
+            translated, detected_lang = translate_text(text, source_lang, target_lang)
+            return JsonResponse({
+                'status': 'success',
+                'translated_text': translated,
+                'detected_lang': detected_lang
+            })
+        except TranslationError as e:
+            return JsonResponse({'status': 'error', 'message': str(e)}, status=500)
+
+    return JsonResponse({'status': 'error', 'message': 'Only POST method is allowed'}, status=405)
+
+from .services.ocr import extract_text_from_image, extract_text_from_frame
+import numpy as np
+import cv2
+
+@csrf_exempt
+def ocr_upload(request):
+    """AJAX endpoint to perform OCR on an uploaded image file."""
+    if request.method == 'POST':
+        image_file = request.FILES.get('image')
+        if not image_file:
+            return JsonResponse({'status': 'error', 'message': 'No image file uploaded.'}, status=400)
+        
+        try:
+            image_bytes = image_file.read()
+            extracted_text = extract_text_from_image(image_bytes)
+            if not extracted_text:
+                return JsonResponse({'status': 'error', 'message': 'No text could be detected in this image. Try a sharper, high-contrast image.'})
+            return JsonResponse({'status': 'success', 'text': extracted_text})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': f"OCR failure: {str(e)}"}, status=500)
+            
+    return JsonResponse({'status': 'error', 'message': 'Only POST method is allowed'}, status=405)
+
+@csrf_exempt
+def ocr_frame(request):
+    """AJAX endpoint to perform real-time OCR on a webcam JPEG blob frame."""
+    if request.method == 'POST':
+        frame_file = request.FILES.get('frame')
+        if not frame_file:
+            return JsonResponse({'status': 'error', 'message': 'No frame received.'}, status=400)
+            
+        try:
+            frame_bytes = frame_file.read()
+            nparr = np.frombuffer(frame_bytes, np.uint8)
+            img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+            if img is None:
+                return JsonResponse({'status': 'error', 'message': 'Invalid frame data.'}, status=400)
+                
+            results = extract_text_from_frame(img)
+            return JsonResponse({'status': 'success', 'results': results})
+        except Exception as e:
+            return JsonResponse({'status': 'error', 'message': f"Frame OCR failure: {str(e)}"}, status=500)
+            
+    return JsonResponse({'status': 'error', 'message': 'Only POST method is allowed'}, status=405)
+
+def scan_webcam_view(request):
+    """Render the real-time webcam scanning portal."""
+    return render(request, 'converter/scan.html')
+
+@login_required
+def image_generator_view(request):
+    """View to handle text-to-image, img2img, and inpainting generation tasks."""
+    if request.method == 'POST':
+        mode = request.POST.get('mode', 'txt2img')  # txt2img, img2img, inpaint
+        prompt = request.POST.get('prompt', '').strip()
+        style = request.POST.get('style', 'realistic')
+
+        if not prompt:
+            messages.error(request, "Please enter a description prompt.")
+            return redirect('image_generator')
+
+        from django_q.tasks import async_task
+
+        if mode == 'txt2img':
+            async_task('converter.tasks.generate_image_task', request.user.id, prompt, style)
+            messages.success(request, "Text-to-Image request submitted! Your image is being generated in the background locally.")
+        
+        elif mode == 'img2img':
+            image_file = request.FILES.get('image')
+            strength = float(request.POST.get('strength', 0.7))
+            if not image_file:
+                messages.error(request, "Please upload an initial image to stylize.")
+                return redirect('image_generator')
+            
+            image_bytes = image_file.read()
+            async_task('converter.tasks.generate_img2img_task', request.user.id, prompt, image_bytes, strength, style)
+            messages.success(request, "Image Stylization request submitted! Processing initial image locally in background.")
+            
+        elif mode == 'inpaint':
+            image_file = request.FILES.get('image')
+            mask_file = request.FILES.get('mask_image')
+            if not image_file or not mask_file:
+                messages.error(request, "Please provide both the source image and drawn mask.")
+                return redirect('image_generator')
+            
+            image_bytes = image_file.read()
+            mask_bytes = mask_file.read()
+            async_task('converter.tasks.generate_inpaint_task', request.user.id, prompt, image_bytes, mask_bytes, style)
+            messages.success(request, "Inpainting task submitted! Editing image details in the background locally.")
+
+        return redirect('image_generator')
+
+    # GET request: load user's generated images
+    images = GeneratedImage.objects.filter(user=request.user).order_by('-created_at')
+    return render(request, 'converter/image_gen.html', {'images': images})
+
+@login_required
+def delete_image(request, pk):
+    """Deletes a generated image and cleans up its file from disk."""
+    image = get_object_or_404(GeneratedImage, pk=pk, user=request.user)
+    if request.method == 'POST':
+        prompt_snippet = image.prompt[:20]
+        image.delete()
+        
+        if request.headers.get('x-requested-with') == 'XMLHttpRequest':
+            return JsonResponse({'status': 'success', 'message': f"Deleted image '{prompt_snippet}'"})
+            
+        messages.success(request, f"Deleted image '{prompt_snippet}'")
+    return redirect('image_generator')

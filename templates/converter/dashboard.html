@@ -102,8 +102,19 @@
                         <!-- Actions (Download & Delete) -->
                         <div class="item-actions">
                             <a href="{{ c.audio_file.url }}" download="{{ c.title }}.mp3" class="action-btn btn-download" title="Download Audio">
-                                <i class="fa-solid fa-circle-down"></i>
+                                <i class="fa-solid fa-file-audio"></i>
                             </a>
+
+                            {% if c.video_file %}
+                                <a href="{{ c.video_file.url }}" download="{{ c.title }}.mp4" class="action-btn btn-download" title="Download Video" style="color: var(--color-secondary); border-color: rgba(168, 85, 247, 0.2);">
+                                    <i class="fa-solid fa-file-video"></i>
+                                </a>
+                            {% elif c.video_style %}
+                                <span class="action-btn btn-download" title="Generating video in background..." style="opacity: 0.5; cursor: wait; color: var(--color-secondary); border-color: rgba(168, 85, 247, 0.1);">
+                                    <i class="fa-solid fa-spinner fa-spin"></i>
+                                </span>
+                            {% endif %}
+
                             <form action="{% url 'delete_conversion' c.id %}" method="post" class="delete-form" onsubmit="ajaxDelete(event, '{{ c.id }}')">
                                 {% csrf_token %}
                                 <button type="submit" class="action-btn btn-delete" title="Delete record">

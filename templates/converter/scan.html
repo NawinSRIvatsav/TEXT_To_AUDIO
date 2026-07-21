@@ -1,0 +1,219 @@
+{% extends 'base.html' %}
+{% load static %}
+
+{% block title %}Real-Time Camera Scan - VoxFlow.ai{% endblock %}
+
+{% block content %}
+<div class="convert-wrapper" style="max-width: 900px; margin: 0 auto;">
+    <div class="glass-card">
+        <div class="card-header" style="text-align: center; margin-bottom: 25px;">
+            <h1 class="card-title"><i class="fa-solid fa-camera-rotate"></i> Real-Time Text Scanner</h1>
+            <p class="card-subtitle">Aim your camera at printed or written text. Boxes will highlight detected words in real time.</p>
+        </div>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 30px;">
+            <!-- Camera Viewfinder Card -->
+            <div style="position: relative; display: flex; flex-direction: column; align-items: center;">
+                <div class="viewfinder-container" style="position: relative; width: 100%; aspect-ratio: 4/3; background: #000; border-radius: 16px; overflow: hidden; border: 2px solid var(--color-primary); box-shadow: 0 0 20px var(--color-primary-glow);">
+                    <video id="webcam" autoplay playsinline style="width: 100%; height: 100%; object-fit: cover;"></video>
+                    <canvas id="overlayCanvas" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none;"></canvas>
+                    
+                    <div id="scanStatus" class="pulse-indicator" style="position: absolute; top: 15px; right: 15px; display: none;"></div>
+                </div>
+
+                <div class="scanner-actions" style="display: flex; gap: 15px; margin-top: 20px; width: 100%;">
+                    <button id="btnStart" class="btn btn-primary" style="flex: 1;" onclick="startCamera()"><i class="fa-solid fa-circle-play"></i> Start Camera</button>
+                    <button id="btnStop" class="btn btn-secondary" style="flex: 1;" onclick="stopCamera()" disabled><i class="fa-solid fa-circle-stop"></i> Stop</button>
+                </div>
+            </div>
+
+            <!-- OCR Results Panel -->
+            <div style="display: flex; flex-direction: column; justify-content: space-between;">
+                <div class="form-group" style="flex: 1; display: flex; flex-direction: column;">
+                    <label class="form-label" style="display: flex; justify-content: space-between; align-items: center;">
+                        <span><i class="fa-solid fa-file-invoice"></i> Extracted Text</span>
+                        <span id="ocrConfidence" style="font-size: 0.8rem; color: var(--text-muted);">Confidence: 0%</span>
+                    </label>
+                    <textarea id="extractedText" class="form-control glass-input" style="flex: 1; min-height: 180px; resize: none; line-height: 1.5; font-size: 0.9rem;" placeholder="Text detected by scanner will accumulate here... You can edit this directly."></textarea>
+                </div>
+
+                <div style="margin-top: 20px; display: flex; flex-direction: column; gap: 10px;">
+                    <button class="btn btn-primary btn-glow" onclick="useScannedText()"><i class="fa-solid fa-circle-check"></i> Import into TTS Pipeline</button>
+                    <a href="{% url 'convert' %}" class="btn btn-secondary"><i class="fa-solid fa-circle-chevron-left"></i> Cancel and Return</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    let videoStream = null;
+    let scanInterval = null;
+    let isScanning = false;
+
+    const video = document.getElementById('webcam');
+    const canvas = document.getElementById('overlayCanvas');
+    const ctx = canvas.getContext('2d');
+    const txtArea = document.getElementById('extractedText');
+    const confidenceLabel = document.getElementById('ocrConfidence');
+    const scanStatusIndicator = document.getElementById('scanStatus');
+
+    const btnStart = document.getElementById('btnStart');
+    const btnStop = document.getElementById('btnStop');
+
+    async function startCamera() {
+        try {
+            videoStream = await navigator.mediaDevices.getUserMedia({ 
+                video: { facingMode: 'environment', width: { ideal: 640 }, height: { ideal: 480 } },
+                audio: false 
+            });
+            video.srcObject = videoStream;
+            video.onloadedmetadata = () => {
+                video.play();
+                // Set canvas resolutions to match video element bounding sizes
+                canvas.width = video.videoWidth;
+                canvas.height = video.videoHeight;
+                startScanning();
+            };
+
+            btnStart.disabled = true;
+            btnStop.disabled = false;
+        } catch (err) {
+            console.error("Camera access failed:", err);
+            alert("Could not access camera. Please verify camera permissions are granted in your browser settings.");
+        }
+    }
+
+    function stopCamera() {
+        if (videoStream) {
+            videoStream.getTracks().forEach(track => track.stop());
+            video.srcObject = null;
+        }
+        stopScanning();
+        btnStart.disabled = false;
+        btnStop.disabled = true;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+    }
+
+    function startScanning() {
+        isScanning = true;
+        scanStatusIndicator.style.display = 'block';
+        
+        // Scan frames periodically (every 1.5 seconds)
+        scanInterval = setInterval(captureAndScanFrame, 1500);
+    }
+
+    function stopScanning() {
+        isScanning = false;
+        scanStatusIndicator.style.display = 'none';
+        if (scanInterval) {
+            clearInterval(scanInterval);
+            scanInterval = null;
+        }
+    }
+
+    function captureAndScanFrame() {
+        if (!isScanning || video.paused || video.ended) return;
+
+        // Temporary canvas to extract frame blob
+        const tempCanvas = document.createElement('canvas');
+        tempCanvas.width = video.videoWidth;
+        tempCanvas.height = video.videoHeight;
+        const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.drawImage(video, 0, 0, tempCanvas.width, tempCanvas.height);
+
+        tempCanvas.toBlob(blob => {
+            if (!blob) return;
+
+            const formData = new FormData();
+            formData.append('frame', blob, 'frame.jpg');
+
+            fetch('/converter/ocr-frame/', {
+                method: 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(res => res.json())
+            .then(data => {
+                if (data.status === 'success') {
+                    drawBoundingBoxes(data.results);
+                    accumulateText(data.results);
+                }
+            })
+            .catch(err => console.error("OCR Frame error:", err));
+        }, 'image/jpeg', 0.8);
+    }
+
+    function drawBoundingBoxes(results) {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+        
+        results.forEach(res => {
+            const box = res.box;
+            
+            // Draw box outline
+            ctx.beginPath();
+            ctx.moveTo(box[0][0], box[0][1]);
+            ctx.lineTo(box[1][0], box[1][1]);
+            ctx.lineTo(box[2][0], box[2][1]);
+            ctx.lineTo(box[3][0], box[3][1]);
+            ctx.closePath();
+            
+            ctx.lineWidth = 3;
+            ctx.strokeStyle = '#06b6d4'; // Cyan
+            ctx.stroke();
+
+            // Draw text highlight background
+            ctx.fillStyle = 'rgba(6, 182, 212, 0.15)';
+            ctx.fill();
+        });
+    }
+
+    function accumulateText(results) {
+        if (results.length === 0) return;
+        
+        let newTexts = [];
+        let totalConf = 0;
+
+        results.forEach(res => {
+            const text = res.text.trim();
+            if (text.length > 2) {
+                newTexts.push(text);
+                totalConf += res.confidence;
+            }
+        });
+
+        if (newTexts.length > 0) {
+            const currentVal = txtArea.value.trim();
+            const textToAppend = newTexts.join(' ');
+            
+            // Basic duplicate prevention
+            if (!currentVal.includes(textToAppend)) {
+                txtArea.value = currentVal ? (currentVal + "\n" + textToAppend) : textToAppend;
+            }
+
+            const avgConf = Math.round((totalConf / results.length) * 100);
+            confidenceLabel.innerText = `Confidence: ${avgConf}%`;
+        }
+    }
+
+    function useScannedText() {
+        const text = txtArea.value.trim();
+        if (!text) {
+            alert("No scanned text to import.");
+            return;
+        }
+
+        // Store in localStorage to easily populate the text area on redirect
+        localStorage.setItem('voxflow_scanned_text', text);
+        stopCamera();
+        window.location.href = "{% url 'convert' %}";
+    }
+
+    // Clean up webcam if user navigates away
+    window.addEventListener('beforeunload', () => {
+        stopCamera();
+    });
+</script>
+{% endblock %}

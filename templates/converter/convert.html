@@ -64,19 +64,77 @@
 
             <!-- File Upload Dropzone -->
             <div class="form-group file-mode-container" id="fileModeContainer">
-                <label class="form-label">Upload a Document (.pdf, .txt)</label>
-                <div class="dropzone" id="dropzone" onclick="document.getElementById('id_file').click()">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                    <label class="form-label" style="margin-bottom: 0;">Upload a Document (.pdf, .txt) or Scan Image (.png, .jpg)</label>
+                    <a href="{% url 'scan_webcam' %}" class="btn btn-secondary" style="padding: 4px 10px; font-size: 0.8rem; border-radius: 8px;">
+                        <i class="fa-solid fa-camera"></i> Scan with Webcam
+                    </a>
+                </div>
+                <div class="dropzone" id="dropzone" onclick="triggerFileSelect()">
                     <i class="fa-solid fa-cloud-arrow-up dropzone-icon"></i>
-                    <p class="dropzone-text">Drag and drop your file here, or <span class="highlight">browse</span></p>
-                    <p class="dropzone-subtext">Supports PDF and TXT files. Max size 10MB.</p>
+                    <p class="dropzone-text">Drag and drop document or image here, or <span class="highlight">browse</span></p>
+                    <p class="dropzone-subtext">Supports PDF, TXT files for translation, or PNG, JPG for OCR text extraction.</p>
                     <div class="selected-file-info" id="selectedFileInfo">
                         <i class="fa-solid fa-file-lines file-icon"></i>
                         <span class="file-name" id="fileName">No file chosen</span>
                         <button type="button" class="clear-file-btn" onclick="clearSelectedFile(event)">&times;</button>
                     </div>
-                    <!-- Hidden actual file input -->
+                    <!-- Hidden actual file inputs -->
                     <div class="hidden-file-input">
                         {{ form.file }}
+                        <input type="file" id="imageOcrInput" accept="image/png, image/jpeg, image/jpg" style="display: none;" onchange="handleImageSelection(event)">
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feature 1: Translation Controls -->
+            <div class="glass-card-nested" style="margin-bottom: 24px; padding: 20px; border-radius: 16px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--glass-border);">
+                <div class="checkbox-wrapper" style="display: flex; align-items: center; gap: 10px;">
+                    {{ form.translate_before_converting }}
+                    <label for="id_translate_before_converting" class="form-label" style="margin-bottom: 0; cursor: pointer;">
+                        <i class="fa-solid fa-language"></i> Translate text before converting to speech
+                    </label>
+                </div>
+                
+                <div class="target-language-wrapper" id="targetLanguageWrapper" style="display: none; margin-top: 15px;">
+                    <div class="form-group" style="margin-bottom: 12px;">
+                        <label for="id_target_language" class="form-label">Target Translation Language</label>
+                        {{ form.target_language }}
+                    </div>
+                    <button type="button" class="btn btn-secondary" id="btnPreviewTranslation" onclick="previewTranslation(event)" style="padding: 6px 14px; font-size: 0.85rem;">
+                        <i class="fa-solid fa-eye"></i> Preview Translation
+                    </button>
+                </div>
+
+                <!-- Translation Preview Panel -->
+                <div class="translation-preview-panel" id="translationPreviewPanel" style="display: none; margin-top: 20px; padding: 15px; border-radius: 12px; background: rgba(0, 0, 0, 0.2); border: 1px solid rgba(255, 255, 255, 0.05);">
+                    <h4 style="font-size: 0.95rem; font-weight: 700; margin-bottom: 10px; color: var(--color-secondary);">Translation Preview</h4>
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px;">
+                        <div>
+                            <span class="form-label" style="font-size: 0.8rem; color: var(--text-secondary);">Original Text Snippet</span>
+                            <div id="originalTextPreview" style="padding: 10px; background: rgba(255,255,255,0.02); border-radius: 8px; font-size: 0.85rem; max-height: 120px; overflow-y: auto; white-space: pre-wrap; border: 1px solid rgba(255,255,255,0.03);"></div>
+                        </div>
+                        <div>
+                            <span class="form-label" style="font-size: 0.8rem; color: var(--text-secondary);">Translated Text (<span id="detectedSourceLang"></span> &rarr; <span id="targetLangLabel"></span>)</span>
+                            <div id="translatedTextPreview" style="padding: 10px; background: rgba(168, 85, 247, 0.05); border-radius: 8px; font-size: 0.85rem; max-height: 120px; overflow-y: auto; white-space: pre-wrap; border: 1px solid rgba(168, 85, 247, 0.1);"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Feature 4: Audio-to-Video Generation Controls -->
+            <div class="glass-card-nested" style="margin-bottom: 24px; padding: 20px; border-radius: 16px; background: rgba(255, 255, 255, 0.02); border: 1px solid var(--glass-border);">
+                <div class="checkbox-wrapper" style="display: flex; align-items: center; gap: 10px;">
+                    {{ form.generate_video }}
+                    <label for="id_generate_video" class="form-label" style="margin-bottom: 0; cursor: pointer;">
+                        <i class="fa-solid fa-file-video"></i> Generate shareable video clip (Asynchronous background task)
+                    </label>
+                </div>
+                
+                <div class="video-style-wrapper" id="videoStyleWrapper" style="display: none; margin-top: 15px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="id_video_style" class="form-label">Video Visualizer & Subtitles Style</label>
+                        {{ form.video_style }}
                     </div>
                 </div>
             </div>
@@ -234,9 +292,173 @@
         }
     }
 
-    // Call initially to set up correct voices on load
+    function toggleTranslationOptions() {
+        const checkbox = document.getElementById('id_translate_before_converting');
+        const wrapper = document.getElementById('targetLanguageWrapper');
+        const previewPanel = document.getElementById('translationPreviewPanel');
+        
+        if (checkbox && checkbox.checked) {
+            wrapper.style.display = 'block';
+        } else {
+            wrapper.style.display = 'none';
+            if (previewPanel) previewPanel.style.display = 'none';
+        }
+    }
+
+    function previewTranslation(event) {
+        if (event) event.preventDefault();
+        
+        const textarea = document.getElementById('id_text');
+        const targetLangSelect = document.getElementById('id_target_language');
+        
+        if (!textarea || !textarea.value.trim()) {
+            alert("Please enter some text in the text area to preview translation.");
+            return;
+        }
+
+        const text = textarea.value.trim();
+        const targetLang = targetLangSelect.value;
+
+        // Show spinner / loading indicator
+        const previewPanel = document.getElementById('translationPreviewPanel');
+        const originalPreview = document.getElementById('originalTextPreview');
+        const translatedPreview = document.getElementById('translatedTextPreview');
+        const detectedSource = document.getElementById('detectedSourceLang');
+        const targetLangLabel = document.getElementById('targetLangLabel');
+
+        originalPreview.innerText = text.slice(0, 300) + (text.length > 300 ? '...' : '');
+        translatedPreview.innerText = "Translating text... Please wait...";
+        detectedSource.innerText = "Detecting...";
+        targetLangLabel.innerText = targetLang.toUpperCase();
+        previewPanel.style.display = 'block';
+
+        // Prepare FormData
+        const formData = new FormData();
+        formData.append('text', text);
+        formData.append('target_lang', targetLang);
+        formData.append('source_lang', 'auto');
+
+        fetch('/converter/translate-preview/', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.status === 'success') {
+                translatedPreview.innerText = data.translated_text;
+                detectedSource.innerText = data.detected_lang.toUpperCase();
+                
+                // Automatically sync standard synthesis language with target language
+                const mainLangSelect = document.getElementById('id_language');
+                if (mainLangSelect) {
+                    mainLangSelect.value = targetLang;
+                    updateVoiceDropdown();
+                }
+            } else {
+                translatedPreview.innerText = "Error: " + data.message;
+                translatedPreview.style.color = '#ef4444';
+            }
+        })
+        .catch(err => {
+            console.error(err);
+            translatedPreview.innerText = "Network error. Failed to connect to translation service.";
+            translatedPreview.style.color = '#ef4444';
+        });
+    }
+
+    function triggerFileSelect() {
+        const choice = confirm("Do you want to upload a Document (.pdf, .txt) for speech conversion?\n\n[Click 'OK' for Document, click 'Cancel' to upload an Image for OCR Text Extraction]");
+        if (choice) {
+            document.getElementById('id_file').click();
+        } else {
+            document.getElementById('imageOcrInput').click();
+        }
+    }
+
+    function handleImageSelection(event) {
+        const file = event.target.files[0];
+        if (!file) return;
+
+        // Show processing loader with custom OCR message
+        const loader = document.getElementById('processingLoader');
+        const loaderSubtitle = document.getElementById('loaderSubtitle');
+        if (loader) {
+            loader.classList.add('active');
+            loaderSubtitle.innerText = "VoxFlow OCR: Processing image and extracting text...";
+        }
+
+        const formData = new FormData();
+        formData.append('image', file);
+
+        fetch('/converter/ocr-upload/', {
+            method: 'POST',
+            body: formData,
+            headers: {
+                'X-Requested-With': 'XMLHttpRequest'
+            }
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (loader) loader.classList.remove('active');
+            if (data.status === 'success') {
+                const textarea = document.getElementById('id_text');
+                if (textarea) {
+                    textarea.value = data.text;
+                    // Trigger input event to update word counters
+                    textarea.dispatchEvent(new Event('input'));
+                    // Set mode back to direct text
+                    setUploadMode('text');
+                    showTemporaryToast('success', "Text successfully extracted from image!");
+                }
+            } else {
+                alert("OCR Failed: " + data.message);
+            }
+        })
+        .catch(err => {
+            if (loader) loader.classList.remove('active');
+            console.error(err);
+            alert("Network error occurred during image OCR.");
+        });
+    }
+
+    // Check for scanner imports from webcam page
+    function checkImportedScannerText() {
+        const text = localStorage.getItem('voxflow_scanned_text');
+        if (text) {
+            const textarea = document.getElementById('id_text');
+            if (textarea) {
+                textarea.value = text;
+                textarea.dispatchEvent(new Event('input'));
+                localStorage.removeItem('voxflow_scanned_text');
+                // Check if showTemporaryToast exists
+                if (typeof showTemporaryToast === 'function') {
+                    setTimeout(() => {
+                        showTemporaryToast('success', "Camera scanned text imported successfully!");
+                    }, 500);
+                } else {
+                    alert("Camera scanned text imported successfully!");
+                }
+            }
+        }
+    }
+
+    function toggleVideoOptions() {
+        const checkbox = document.getElementById('id_generate_video');
+        const wrapper = document.getElementById('videoStyleWrapper');
+        if (checkbox && wrapper) {
+            wrapper.style.display = checkbox.checked ? 'block' : 'none';
+        }
+    }
+
+    // Call initially to set up correct voices and translation options on load
     document.addEventListener('DOMContentLoaded', () => {
         updateVoiceDropdown();
+        toggleTranslationOptions();
+        toggleVideoOptions();
+        checkImportedScannerText();
     });
 </script>
 {% endblock %}
