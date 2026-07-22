@@ -2,7 +2,7 @@ import os
 import cv2
 import numpy as np
 import whisper
-from moviepy.editor import VideoClip, AudioFileClip
+from moviepy import VideoClip, AudioFileClip
 
 _whisper_model = None
 

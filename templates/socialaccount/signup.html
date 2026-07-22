@@ -1,0 +1,52 @@
+{% extends 'base.html' %}
+{% load i18n %}
+{% load socialaccount %}
+
+{% block title %}Complete Registration - VoxFlow.ai{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper" style="display: flex; align-items: center; justify-content: center; min-height: 70vh; padding: 20px;">
+    <div class="glass-card auth-card animate-fade-in" style="max-width: 450px; width: 100%; padding: 40px; border-radius: 24px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--glass-border); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
+        <div class="auth-header" style="text-align: center; margin-bottom: 25px;">
+            <h2 style="font-size: 1.8rem; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">
+                <i class="fa-solid fa-user-plus" style="color: var(--color-primary);"></i> Finalize Setup
+            </h2>
+            <p style="color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5;">You are signing up using your Google account (<strong>{{ account.user.email }}</strong>). Please choose a username to finalize your registration.</p>
+        </div>
+
+        <form class="signup" id="signup_form" method="post" action="{% url 'socialaccount_signup' %}">
+            {% csrf_token %}
+            
+            {% if form.non_field_errors %}
+                <div class="error-summary glass-alert" style="margin-bottom: 20px; background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.2); padding: 12px; border-radius: 12px; font-size: 0.85rem; color: #f87171; display: flex; align-items: center; gap: 8px;">
+                    <i class="fa-solid fa-circle-exclamation"></i>
+                    <div>
+                        {% for error in form.non_field_errors %}
+                            <p>{{ error }}</p>
+                        {% endfor %}
+                    </div>
+                </div>
+            {% endif %}
+
+            {% for field in form %}
+                <div class="form-group" style="margin-bottom: 20px;">
+                    <label for="{{ field.id_for_label }}" class="form-label" style="display: block; margin-bottom: 8px; font-size: 0.85rem; font-weight: 600; color: var(--text-secondary);">{{ field.label }}</label>
+                    <div class="input-icon-wrapper" style="position: relative;">
+                        <i class="fa-solid fa-user input-icon" style="position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 0.95rem;"></i>
+                        <input type="text" name="{{ field.name }}" id="{{ field.id_for_label }}" class="form-control glass-input" style="width: 100%; padding: 12px 12px 12px 42px; border-radius: 12px; background: rgba(255, 255, 255, 0.05); border: 1px solid var(--glass-border); color: #fff; font-size: 0.95rem; box-sizing: border-box; outline: none; transition: all 0.3s;" placeholder="Choose a username..." required>
+                    </div>
+                    {% if field.errors %}
+                        <span class="field-error" style="color: #f87171; font-size: 0.8rem; margin-top: 5px; display: block;">{{ field.errors.0 }}</span>
+                    {% endif %}
+                </div>
+            {% endfor %}
+
+            <div class="auth-action" style="margin-top: 25px;">
+                <button type="submit" class="btn btn-primary btn-full btn-glow" style="width: 100%; padding: 12px; font-weight: 600; font-size: 1rem; border-radius: 12px; border: none; cursor: pointer; transition: all 0.3s;">
+                    Complete Setup
+                </button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

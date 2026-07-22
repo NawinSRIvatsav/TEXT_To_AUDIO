@@ -40,14 +40,17 @@
                 <span class="field-hint">If left blank, a title will be auto-generated from your text.</span>
             </div>
 
-            <!-- Tabs/Toggles for Upload Mode -->
-            <div class="upload-mode-selector">
+            <!-- Mode Toggle Tabs -->
+            <div class="tabs-container" style="display: flex; gap: 8px; flex-wrap: wrap;">
                 <button type="button" class="tab-btn active" id="tabDirectText" onclick="setUploadMode('text')">
                     <i class="fa-solid fa-keyboard"></i> Direct Text
                 </button>
                 <button type="button" class="tab-btn" id="tabFileUpload" onclick="setUploadMode('file')">
                     <i class="fa-solid fa-file-arrow-up"></i> Upload Document
                 </button>
+                <a href="{% url 'scan_webcam' %}" class="tab-btn" style="text-decoration: none; display: inline-flex; align-items: center; justify-content: center; gap: 8px;">
+                    <i class="fa-solid fa-camera"></i> Camera Scan
+                </a>
             </div>
 
             <!-- Direct Text Area -->

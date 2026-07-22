@@ -12,6 +12,9 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from pathlib import Path
 import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -26,7 +29,10 @@ SECRET_KEY = 'django-insecure-&-yhrejtc&h!!9p_l@nq##*j^1fyj#tzjr5y05u(19+%lhelum
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = [
+    '127.0.0.1',
+    'localhost',
+]
 
 
 # Application definition
@@ -151,9 +157,9 @@ AUTHENTICATION_BACKENDS = [
 SOCIALACCOUNT_PROVIDERS = {
     'google': {
         'APP': {
-            'client_id': os.environ.get('GOOGLE_OAUTH_CLIENT_ID', ''),
-            'secret': os.environ.get('GOOGLE_OAUTH_SECRET', ''),
-            'key': ''
+            'client_id': os.getenv('GOOGLE_OAUTH_CLIENT_ID'),
+            'secret': os.getenv('GOOGLE_OAUTH_SECRET'),
+            'key': '',
         },
         'SCOPE': [
             'profile',
@@ -161,7 +167,7 @@ SOCIALACCOUNT_PROVIDERS = {
         ],
         'AUTH_PARAMS': {
             'access_type': 'online',
-        }
+        },
     }
 }
 

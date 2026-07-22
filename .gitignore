@@ -1,6 +1,7 @@
 # Django ignore rules
 *.log
 db.sqlite3
+.env
 media/
 __pycache__/
 *.pyc

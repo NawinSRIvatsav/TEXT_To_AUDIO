@@ -1,0 +1,30 @@
+{% extends 'base.html' %}
+{% load i18n %}
+
+{% block title %}Sign In with Google - VoxFlow.ai{% endblock %}
+
+{% block content %}
+<div class="auth-wrapper" style="display: flex; align-items: center; justify-content: center; min-height: 70vh; padding: 20px;">
+    <div class="glass-card auth-card animate-fade-in" style="max-width: 450px; width: 100%; padding: 40px; border-radius: 24px; background: rgba(255, 255, 255, 0.03); border: 1px solid var(--glass-border); box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);">
+        <div class="auth-header" style="text-align: center; margin-bottom: 25px;">
+            <h2 style="font-size: 1.8rem; font-weight: 700; color: var(--text-primary); margin-bottom: 8px;">
+                <i class="fa-brands fa-google" style="color: #ea4335;"></i> Google Sign In
+            </h2>
+            <p style="color: var(--text-secondary); font-size: 0.95rem; line-height: 1.5;">You are about to sign in to VoxFlow.ai using your third-party Google account.</p>
+        </div>
+
+        <form method="post">
+            {% csrf_token %}
+            <div class="auth-action" style="margin-top: 25px;">
+                <button type="submit" class="btn btn-primary btn-full btn-glow" style="width: 100%; padding: 12px; font-weight: 600; font-size: 1rem; border-radius: 12px; display: flex; align-items: center; justify-content: center; gap: 8px; border: none; cursor: pointer; transition: all 0.3s;">
+                    <i class="fa-solid fa-circle-right"></i> {% trans "Continue" %}
+                </button>
+            </div>
+        </form>
+
+        <div class="auth-footer" style="text-align: center; margin-top: 25px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 20px;">
+            <p style="font-size: 0.85rem; color: var(--text-secondary);">Changed your mind? <a href="{% url 'login' %}" class="auth-link" style="color: var(--color-primary); text-decoration: none; font-weight: 600; transition: color 0.3s;">Return to login</a></p>
+        </div>
+    </div>
+</div>
+{% endblock %}

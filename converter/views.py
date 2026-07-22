@@ -12,7 +12,7 @@ from PyPDF2 import PdfReader
 import io
 import datetime
 
-from .models import AudioConversion
+from .models import AudioConversion, GeneratedImage
 from .forms import AudioConversionForm
 
 def home(request):
